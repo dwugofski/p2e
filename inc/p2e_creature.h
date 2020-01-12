@@ -6,6 +6,9 @@
 
 namespace p2e {
 	
+	class Creature;
+	class Feat;
+	class Ability;
 }
 
 #endif

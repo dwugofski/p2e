@@ -139,6 +139,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\inc\p2e.h" />
+    <ClInclude Include="..\..\inc\p2e_core.h" />
+    <ClInclude Include="..\..\inc\p2e_creature.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\src\p2e.cpp" />

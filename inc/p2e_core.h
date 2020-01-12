@@ -18,9 +18,15 @@ namespace p2e {
 	typedef int rollval_t;
 	typedef bool sign_t;
 
+	const sign_t POS = false;
+	const sign_t NEG = true;
+
 	class Object;
 	class Core;
-	class RolLVal;
+	class Updateable;
+	class Roll;
+	class Value;
+	class ValueMod;
 
 	namespace ui {
 		class AbstractCore;
@@ -44,6 +50,9 @@ namespace p2e {
 		void create_(Core& core, const id_t& id, const string& name, ui::AbstractObject* uiObj);
 		void create_(const Object& source);
 
+		vector<ui::AbstractObject*>::const_iterator findBondedUI_(const ui::AbstractObject& testUiObj) const;
+		vector<ui::AbstractObject*>::iterator findBondedUI_(const ui::AbstractObject& testUiObj);
+
 	public:
 		id_t id() const;
 		string name() const;
@@ -60,6 +69,10 @@ namespace p2e {
 		umap<id_t, Object*> objects_;
 		ui::AbstractCore* uiCore_;
 
+	protected:
+		vector<ui::AbstractCore*>::const_iterator findBondedUI_(const ui::AbstractCore& testUiObj) const;
+		vector<ui::AbstractCore*>::iterator findBondedUI_(const ui::AbstractCore& testUiObj);
+
 	public:
 		Core();
 		Core(ui::AbstractCore* uiCore);
@@ -75,9 +88,48 @@ namespace p2e {
 		virtual void unbindUI(ui::AbstractCore& oldUICore);
 	};
 
-	class Roll {
+	typedef void (*UpdateCallback)(Updateable*);
+
+	struct UpdateCallbackSpec {
+		UpdateCallback callback;
+		Updateable* source;
+	};
+
+	class Updateable {
+	protected:
+		vector<Updateable*> dependents_;
+		vector<Updateable*> parents_;
+		vector<UpdateCallbackSpec> callbacks_;
+
+		Updateable(); // To prevent public access to the constructor
+
 	public:
-		enum class Die : rollval_t {
+		~Updateable();
+
+		bool hasDependent(const Updateable& testDep, bool recursive = false) const;
+		void addDependent(Updateable& newDep);
+		void removeDependent(Updateable& oldDep);
+
+		bool hasParent(const Updateable& testParent, bool recursive = false) const;
+		void addParent(Updateable& newParent);
+		void removeParent(Updateable& oldParent);
+
+		bool hasCallback(const UpdateCallbackSpec& spec) const;
+		bool hasCallback(const UpdateCallback callback) const;
+		bool hasCallback(const Updateable& source, const UpdateCallback callback) const;
+		void addCallback(UpdateCallbackSpec& spec);
+		void addCallback(UpdateCallback callback);
+		void addCallback(Updateable& source, UpdateCallback callback);
+		void removeCallback(UpdateCallbackSpec& spec);
+		void removeCallback(UpdateCallback callback);
+		void removeCallback(Updateable& source, UpdateCallback callback);
+
+		void doUpdate() const;
+	};
+
+	class Roll : public Updateable {
+	public:
+		enum class Die {
 			TWO,
 			THREE,
 			FOUR,
@@ -94,7 +146,7 @@ namespace p2e {
 
 		static rollval_t roll(const string& specification);
 
-	private:
+	protected:
 		vector<Die> dice_;
 		vector<size_t> counts_;
 		vector<sign_t> signs_;
@@ -105,11 +157,15 @@ namespace p2e {
 		Roll(const string& specification);
 		Roll(const Die& die);
 		Roll(const size_t& count, const Die& die);
+		Roll(const sign_t& sign, const size_t& count, const Die& die);
 		Roll(const Die& die, const rollval_t& mod);
 		Roll(const size_t& count, const Die& die, const rollval_t& mod);
+		Roll(const sign_t& sign, const size_t& count, const Die& die, const rollval_t& mod);
 		Roll(const rollval_t& mod);
+		Roll(const Roll& source);
 
 		rollval_t roll() const;
+		rollval_t average(bool roundup = false) const;
 		string spec() const;
 
 		void add(const Roll& roll);
@@ -138,12 +194,15 @@ namespace p2e {
 
 		void clear();
 
-		operator string() const;
+		operator string() const; // Returns specification
+		operator rollval_t() const; // Returns roll()
 
 		bool operator==(const Roll& rhs) const;
 		bool operator==(const string& rhs) const;
 
 		Roll& operator=(const Roll& rhs);
+		Roll& operator=(const rollval_t& rhs);
+		Roll& operator=(const Die& rhs);
 		Roll& operator=(const string& rhs);
 
 		Roll& operator+(const Roll& rhs) const;
@@ -157,6 +216,72 @@ namespace p2e {
 		Roll& operator+=(const string& rhs);
 	};
 
+	class ValueMod : public Updateable {
+	public:
+		enum class Type {
+			ADD,
+			BASE,
+			OVERRIDE
+		};
+
+	private:
+		Type type_;
+		string name_;
+		string description_;
+		rollval_t value_;
+		bool set_;
+		Value& parent_;
+
+	public:
+		ValueMod(Value& parent);
+		ValueMod(Value& parent, const ValueMod& source);
+		~ValueMod();
+
+		Type type() const;
+		void type(const Type& newtype);
+
+		rollval_t value() const;
+		void value(const rollval_t& newval);
+
+		string name() const;
+		void name(const string& newname);
+
+		string description() const;
+		void description(const string& newdesc);
+
+		bool enabled() const;
+		void setEnabled(const bool& enval);
+		void toggle();
+		void enable();
+		void disable();
+	};
+
+	class Value : public Updateable {
+	protected:
+		rollval_t base_;
+		umap<string, ValueMod::Type> mod_locator_;
+		umap<string, ValueMod> additive_mods_;
+		umap<string, ValueMod> base_mods_;
+		umap<string, ValueMod> overriding_mods_;
+
+	public:
+		Value();
+		Value(const Value& source);
+		~Value();
+
+		rollval_t value() const;
+		rollval_t base() const;
+		void base(const rollval_t& newval) const;
+
+		bool hasMod() const;
+		bool hasMod(const string& testMod) const;
+		void addMod(const ValueMod& source);
+		void removeMod(const ValueMod& source);
+		void renameMod(const string& oldname, const string& newname);
+		void enableMod(const string& modname);
+		void disableMod(const string& modname);
+		void retypeMod(const string& modname, const ValueMod::Type& newtype);
+	};
 }
 
 
